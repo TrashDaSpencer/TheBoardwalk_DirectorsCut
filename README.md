@@ -95,6 +95,18 @@ The initial objective appears:
 
 ## 3. Gameplay Mechanics
 
+### Prototype PC Controls
+
+| Action | Key |
+|---|---|
+| Move left / right | A / D |
+| Jump | Space |
+| Kick | Left Ctrl |
+| Interact with the nearest nearby object | E |
+| Switch between Theatrical Release and Director's Cut | Tab |
+
+The prototype player uses a side-on camera and a simple primitive stand-in. Level actors can implement the `Boardwalk Interactable` interface to respond to interaction or kicks, and the `Boardwalk World Variant` interface to update when the active cut changes.
+
 ### 3.1 Switching Between Cuts
 
 The player can switch between the Theatrical Release (Day) and the Director's Cut (Night) at any time when standing in a shared area.
