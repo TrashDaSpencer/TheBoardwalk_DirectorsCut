@@ -2,10 +2,7 @@
 
 #include "BoardwalkCharacter.h"
 
-#include "BoardwalkBuilding.h"
 #include "BoardwalkInteractable.h"
-#include "BoardwalkPedestrianLine.h"
-#include "BoardwalkRoamingNPC.h"
 #include "BoardwalkWorldVariant.h"
 #include "Components/BillboardComponent.h"
 #include "Camera/CameraComponent.h"
@@ -48,20 +45,61 @@ ABoardwalkCharacter::ABoardwalkCharacter()
 	SideCamera->ProjectionMode = ECameraProjectionMode::Orthographic;
 	SideCamera->OrthoWidth = 1800.0f;
 
-	static ConstructorHelpers::FObjectFinder<UTexture2D> DayTextureAsset(TEXT("/Game/Sprites/Guy_Day_Idle.Guy_Day_Idle"));
-	static ConstructorHelpers::FObjectFinder<UTexture2D> NightTextureAsset(TEXT("/Game/Sprites/Guy_Night_Idle.Guy_Night_Idle"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> DayTextureAsset(TEXT("/Game/Player/Guy_Day_Idle.Guy_Day_Idle"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> NightTextureAsset(TEXT("/Game/Player/Guy_Night_Idle.Guy_Night_Idle"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> DayJumpTextureAsset(TEXT("/Game/Player/Guy_Day_Jump.Guy_Day_Jump"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> NightJumpTextureAsset(TEXT("/Game/Player/Guy_Night_Jump.Guy_Night_Jump"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> DayTextureLeftAsset(TEXT("/Game/Player/Guy_Day_Idle_Left.Guy_Day_Idle_Left"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> NightTextureLeftAsset(TEXT("/Game/Player/Guy_Night_Idle_Left.Guy_Night_Idle_Left"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> DayRunTextureAsset(TEXT("/Game/Player/Guy_Day_Run.Guy_Day_Run"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> NightRunTextureAsset(TEXT("/Game/Player/Guy_Night_Run.Guy_Night_Run"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> DayRunTextureLeftAsset(TEXT("/Game/Player/Guy_Day_Run_Left.Guy_Day_Run_Left"));
+	static ConstructorHelpers::FObjectFinder<UTexture2D> NightRunTextureLeftAsset(TEXT("/Game/Player/Guy_Night_Run_Left.Guy_Night_Run_Left"));
 	if (DayTextureAsset.Succeeded())
 	{
 		DaySpriteTexture = DayTextureAsset.Object;
+		NativeDaySpriteTexture = DayTextureAsset.Object;
 	}
 	if (NightTextureAsset.Succeeded())
 	{
 		NightSpriteTexture = NightTextureAsset.Object;
 	}
+	if (DayJumpTextureAsset.Succeeded())
+	{
+		DayJumpSpriteTexture = DayJumpTextureAsset.Object;
+	}
+	if (NightJumpTextureAsset.Succeeded())
+	{
+		NightJumpSpriteTexture = NightJumpTextureAsset.Object;
+	}
+	if (DayTextureLeftAsset.Succeeded())
+	{
+		DaySpriteTextureLeft = DayTextureLeftAsset.Object;
+	}
+	if (NightTextureLeftAsset.Succeeded())
+	{
+		NightSpriteTextureLeft = NightTextureLeftAsset.Object;
+	}
+	if (DayRunTextureAsset.Succeeded())
+	{
+		DayRunSpriteTexture = DayRunTextureAsset.Object;
+	}
+	if (NightRunTextureAsset.Succeeded())
+	{
+		NightRunSpriteTexture = NightRunTextureAsset.Object;
+	}
+	if (DayRunTextureLeftAsset.Succeeded())
+	{
+		DayRunSpriteTextureLeft = DayRunTextureLeftAsset.Object;
+	}
+	if (NightRunTextureLeftAsset.Succeeded())
+	{
+		NightRunSpriteTextureLeft = NightRunTextureLeftAsset.Object;
+	}
 
 	CharacterSprite = CreateDefaultSubobject<UBillboardComponent>(TEXT("CharacterSprite"));
 	CharacterSprite->SetupAttachment(GetRootComponent());
-	CharacterSprite->SetRelativeScale3D(FVector(0.7f));
+	CharacterSprite->SetRelativeScale3D(FVector(CharacterSpriteScale));
 	CharacterSprite->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	CharacterSprite->SetHiddenInGame(false);
 	CharacterSprite->SetVisibility(true, true);
@@ -72,9 +110,15 @@ void ABoardwalkCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	GetCharacterMovement()->MaxWalkSpeed = WalkSpeed;
+	if (CharacterSprite)
+	{
+		SpriteBaseRelativeLocation = CharacterSprite->GetRelativeLocation();
+	}
+	if (CharacterSprite && CharacterSprite->Sprite && CharacterSprite->Sprite != NativeDaySpriteTexture && DaySpriteTexture == NativeDaySpriteTexture)
+	{
+		DaySpriteTexture = CharacterSprite->Sprite;
+	}
 	ApplyWorldVariant();
-	SpawnRoamingNPCs();
-	SpawnBoardwalkSetPieces();
 }
 
 void ABoardwalkCharacter::Tick(float DeltaSeconds)
@@ -82,12 +126,105 @@ void ABoardwalkCharacter::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	const float Direction = (bMoveRightHeld ? 1.0f : 0.0f) - (bMoveLeftHeld ? 1.0f : 0.0f);
-	if (!FMath::IsNearlyZero(Direction))
+	const bool bShouldMove = !FMath::IsNearlyZero(Direction);
+	if (bShouldMove)
 	{
-		FacingDirection = Direction;
+		if (FacingDirection != Direction)
+		{
+			FacingDirection = Direction;
+			UpdateCharacterSprite();
+		}
 		SetActorRotation(FRotator(0.0f, FacingDirection > 0.0f ? 0.0f : 180.0f, 0.0f));
-		UpdateCharacterSprite();
 		AddMovementInput(FVector::ForwardVector, Direction);
+	}
+
+	if (bShouldMove != bIsMoving)
+	{
+		bIsMoving = bShouldMove;
+		RunAnimationElapsed = 0.0f;
+		RunAnimationFrame = 0;
+		UpdateCharacterSprite();
+	}
+
+	const bool bShouldJump = GetCharacterMovement()->IsFalling();
+	if (bShouldJump != bIsJumping)
+	{
+		const bool bJustLanded = bIsJumping && !bShouldJump;
+		bIsJumping = bShouldJump;
+		bIsJumpingUp = bIsJumping;
+		bIsLandingAnimation = bJustLanded;
+		JumpAnimationElapsed = 0.0f;
+		const int32 FrameCount = FMath::Max(JumpAnimationColumns * JumpAnimationRows, 1);
+		const int32 StartFrame = FMath::Clamp(bJustLanded ? JumpLandingStartFrame : JumpAnimationStartFrame, 0, FrameCount - 1);
+		JumpAnimationFrame = bIsJumping ? StartFrame : 0;
+		if (bJustLanded)
+		{
+			JumpAnimationFrame = StartFrame;
+		}
+		UpdateCharacterSprite();
+	}
+
+	if (bIsMoving && !bIsJumping)
+	{
+		const float FrameDuration = 1.0f / FMath::Max(RunAnimationFramesPerSecond, 1.0f);
+		RunAnimationElapsed += DeltaSeconds;
+		if (RunAnimationElapsed >= FrameDuration)
+		{
+			RunAnimationElapsed = FMath::Fmod(RunAnimationElapsed, FrameDuration);
+			RunAnimationFrame = (RunAnimationFrame + 1) % FMath::Max(RunAnimationColumns * RunAnimationRows, 1);
+			UpdateCharacterSprite();
+		}
+	}
+
+	if (bIsJumping)
+	{
+		if (bIsJumpingUp && GetVelocity().Z <= 0.0f)
+		{
+			bIsJumpingUp = false;
+			JumpAnimationElapsed = 0.0f;
+		}
+
+		if (bIsJumpingUp)
+		{
+			const float FrameDuration = 1.0f / FMath::Max(JumpAnimationFramesPerSecond, 1.0f);
+			JumpAnimationElapsed += DeltaSeconds;
+			if (JumpAnimationElapsed >= FrameDuration)
+			{
+				JumpAnimationElapsed = FMath::Fmod(JumpAnimationElapsed, FrameDuration);
+				const int32 FrameCount = FMath::Max(JumpAnimationColumns * JumpAnimationRows, 1);
+				const int32 StartFrame = FMath::Clamp(JumpAnimationStartFrame, 0, FrameCount - 1);
+				const int32 EndFrame = FMath::Clamp(JumpAnimationEndFrame, StartFrame, FrameCount - 1);
+				const int32 PreviousFrame = JumpAnimationFrame;
+				JumpAnimationFrame = FMath::Min(JumpAnimationFrame + 1, EndFrame);
+				if (JumpAnimationFrame != PreviousFrame)
+				{
+					UpdateCharacterSprite();
+				}
+			}
+		}
+	}
+
+	if (bIsLandingAnimation)
+	{
+		const float FrameDuration = 1.0f / FMath::Max(JumpAnimationFramesPerSecond, 1.0f);
+		JumpAnimationElapsed += DeltaSeconds;
+		if (JumpAnimationElapsed >= FrameDuration)
+		{
+			JumpAnimationElapsed = FMath::Fmod(JumpAnimationElapsed, FrameDuration);
+			const int32 FrameCount = FMath::Max(JumpAnimationColumns * JumpAnimationRows, 1);
+			const int32 StartFrame = FMath::Clamp(JumpLandingStartFrame, 0, FrameCount - 1);
+			const int32 EndFrame = FMath::Clamp(JumpLandingEndFrame, StartFrame, FrameCount - 1);
+			if (JumpAnimationFrame < EndFrame)
+			{
+				++JumpAnimationFrame;
+				UpdateCharacterSprite();
+			}
+			else
+			{
+				bIsLandingAnimation = false;
+				UpdateCharacterSprite();
+			}
+		}
 	}
 }
 
@@ -172,56 +309,6 @@ void ABoardwalkCharacter::ApplyWorldVariant()
 	}
 }
 
-void ABoardwalkCharacter::SpawnRoamingNPCs()
-{
-	if (!GetWorld())
-	{
-		return;
-	}
-
-	const float SpawnOffsets[] = { -500.0f, 500.0f };
-	for (int32 Index = 0; Index < UE_ARRAY_COUNT(SpawnOffsets); ++Index)
-	{
-		const FVector SpawnLocation = GetActorLocation() + FVector(SpawnOffsets[Index], 0.0f, 0.0f);
-		const FTransform SpawnTransform(FRotator::ZeroRotator, SpawnLocation);
-		FActorSpawnParameters SpawnParameters;
-		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-		if (ABoardwalkRoamingNPC* NPC = GetWorld()->SpawnActor<ABoardwalkRoamingNPC>(ABoardwalkRoamingNPC::StaticClass(), SpawnTransform, SpawnParameters))
-		{
-			NPC->ConfigurePatrol(250.0f, Index == 0, Index, bIsDirectorCut);
-		}
-	}
-}
-
-void ABoardwalkCharacter::SpawnBoardwalkSetPieces()
-{
-	if (!GetWorld())
-	{
-		return;
-	}
-
-	const float BuildingOffsets[] = { -700.0f, 650.0f };
-	for (int32 Index = 0; Index < UE_ARRAY_COUNT(BuildingOffsets); ++Index)
-	{
-		const FVector BuildingLocation = GetActorLocation() + FVector(BuildingOffsets[Index], -450.0f, 0.0f);
-		FActorSpawnParameters SpawnParameters;
-		SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		if (ABoardwalkBuilding* Building = GetWorld()->SpawnActor<ABoardwalkBuilding>(ABoardwalkBuilding::StaticClass(), FTransform(FRotator(0.0f, 180.0f, 0.0f), BuildingLocation), SpawnParameters))
-		{
-			Building->SetBuildingStyle(Index, bIsDirectorCut);
-		}
-	}
-
-	const FVector LineLocation = GetActorLocation() + FVector(1050.0f, 0.0f, 0.0f);
-	FActorSpawnParameters LineSpawnParameters;
-	LineSpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	if (ABoardwalkPedestrianLine* PedestrianLine = GetWorld()->SpawnActor<ABoardwalkPedestrianLine>(ABoardwalkPedestrianLine::StaticClass(), FTransform(FRotator::ZeroRotator, LineLocation), LineSpawnParameters))
-	{
-		PedestrianLine->SetDirectorCutActive_Implementation(bIsDirectorCut);
-	}
-}
-
 void ABoardwalkCharacter::UpdateCharacterSprite()
 {
 	if (CharacterSprite)
@@ -230,9 +317,66 @@ void ABoardwalkCharacter::UpdateCharacterSprite()
 		CharacterSprite->SetVisibility(true, true);
 
 		const bool bFacingLeft = FacingDirection < 0.0f;
-		UTexture2D* SpriteToUse = bIsDirectorCut ? NightSpriteTexture : DaySpriteTexture;
-		CharacterSprite->SetSprite(SpriteToUse);
-		CharacterSprite->SetRelativeScale3D(FVector(bFacingLeft ? -0.7f : 0.7f, 0.7f, 0.7f));
+		UTexture2D* SpriteToUse = bIsDirectorCut
+			? (bFacingLeft ? NightSpriteTextureLeft : NightSpriteTexture)
+			: (bFacingLeft ? DaySpriteTextureLeft : DaySpriteTexture);
+		if (bIsJumping || bIsLandingAnimation)
+		{
+			UTexture2D* JumpSpriteToUse = bIsDirectorCut
+				? (bFacingLeft && NightJumpSpriteTextureLeft ? NightJumpSpriteTextureLeft : NightJumpSpriteTexture)
+				: (bFacingLeft && DayJumpSpriteTextureLeft ? DayJumpSpriteTextureLeft : DayJumpSpriteTexture);
+			if (JumpSpriteToUse && JumpAnimationColumns > 0 && JumpAnimationRows > 0)
+			{
+				const int32 FrameWidth = JumpSpriteToUse->GetSizeX() / JumpAnimationColumns;
+				const int32 FrameHeight = JumpSpriteToUse->GetSizeY() / JumpAnimationRows;
+				if (FrameWidth > 0 && FrameHeight > 0)
+				{
+					const int32 Column = JumpAnimationFrame % JumpAnimationColumns;
+					const int32 Row = JumpAnimationFrame / JumpAnimationColumns;
+					CharacterSprite->SetSpriteAndUV(JumpSpriteToUse, Column * FrameWidth, FrameWidth, Row * FrameHeight, FrameHeight);
+				}
+				else
+				{
+					CharacterSprite->SetSpriteAndUV(SpriteToUse, 0, 0, 0, 0);
+				}
+			}
+			else
+			{
+				CharacterSprite->SetSpriteAndUV(SpriteToUse, 0, 0, 0, 0);
+			}
+		}
+		else if (bIsMoving)
+		{
+			UTexture2D* RunSpriteToUse = bIsDirectorCut
+				? (bFacingLeft ? NightRunSpriteTextureLeft : NightRunSpriteTexture)
+				: (bFacingLeft ? DayRunSpriteTextureLeft : DayRunSpriteTexture);
+			if (RunSpriteToUse && RunAnimationColumns > 0 && RunAnimationRows > 0)
+			{
+				const int32 FrameWidth = RunSpriteToUse->GetSizeX() / RunAnimationColumns;
+				const int32 FrameHeight = RunSpriteToUse->GetSizeY() / RunAnimationRows;
+				if (FrameWidth > 0 && FrameHeight > 0)
+				{
+					const int32 Column = RunAnimationFrame % RunAnimationColumns;
+					const int32 Row = RunAnimationFrame / RunAnimationColumns;
+					CharacterSprite->SetSpriteAndUV(RunSpriteToUse, Column * FrameWidth, FrameWidth, Row * FrameHeight, FrameHeight);
+				}
+				else
+				{
+					CharacterSprite->SetSpriteAndUV(SpriteToUse, 0, 0, 0, 0);
+				}
+			}
+			else
+			{
+				CharacterSprite->SetSpriteAndUV(SpriteToUse, 0, 0, 0, 0);
+			}
+		}
+		else
+		{
+			CharacterSprite->SetSpriteAndUV(SpriteToUse, 0, 0, 0, 0);
+		}
+		const float ActiveSpriteScale = CharacterSpriteScale * ((bIsMoving || bIsJumping || bIsLandingAnimation) ? MovementSpriteScaleMultiplier : 1.0f);
+		CharacterSprite->SetRelativeScale3D(FVector(ActiveSpriteScale));
+		CharacterSprite->SetRelativeLocation(SpriteBaseRelativeLocation + (bIsMoving && !bIsJumping && !bIsLandingAnimation ? MovementSpriteOffset : FVector::ZeroVector));
 	}
 }
 

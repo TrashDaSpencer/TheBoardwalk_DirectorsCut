@@ -32,6 +32,9 @@ private:
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UBillboardComponent> CharacterSprite;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Character|Sprites", meta = (DisplayName = "Sprite Scale", ClampMin = "0.01", UIMin = "0.1", UIMax = "2.0"))
+	float CharacterSpriteScale = 0.7f;
+
 	UPROPERTY(Transient)
 	TObjectPtr<UTexture2D> DragonDaySprite;
 

@@ -32,7 +32,7 @@ ABoardwalkRoamingNPC::ABoardwalkRoamingNPC()
 
 	CharacterSprite = CreateDefaultSubobject<UBillboardComponent>(TEXT("CharacterSprite"));
 	CharacterSprite->SetupAttachment(GetRootComponent());
-	CharacterSprite->SetRelativeScale3D(FVector(0.7f));
+	CharacterSprite->SetRelativeScale3D(FVector(CharacterSpriteScale));
 	CharacterSprite->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	CharacterSprite->SetHiddenInGame(false);
 	CharacterSprite->SetVisibility(true, true);
@@ -100,5 +100,5 @@ void ABoardwalkRoamingNPC::UpdateSprite()
 		SpriteToUse = bIsDirectorCut ? RaccoonNightSprite : RaccoonDaySprite;
 	}
 	CharacterSprite->SetSprite(SpriteToUse);
-	CharacterSprite->SetRelativeScale3D(FVector(PatrolDirection < 0.0f ? -0.7f : 0.7f, 0.7f, 0.7f));
+	CharacterSprite->SetRelativeScale3D(FVector(PatrolDirection < 0.0f ? -CharacterSpriteScale : CharacterSpriteScale, CharacterSpriteScale, CharacterSpriteScale));
 }
